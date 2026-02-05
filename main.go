@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 type tokenType uint8
 
 const (
@@ -70,13 +72,41 @@ func parseGroup(regex string, groupCtx *parseContext) {
 
 func parseBracket(regex string, ctx *parseContext) {
 	ctx.pos++ // Jumping the first bracket
+	var literals []string
 	ch := regex[ctx.pos]
 	for ch != ']' {
 		if ch == '-' {
-
+			next := regex[ctx.pos+1]
+			prev := literals[len(literals)-1][0]
+			literals[len(literals)-1] = fmt.Sprintf("%c%c", prev, next)
+			ctx.pos++
 		} else {
-
+			literals = append(literals, fmt.Sprintf("%c", ch))
 		}
 		ctx.pos++
 	}
+
+	literalsSet := map[uint8]bool{}
+	for _, l := range literals {
+		for i := l[0]; i <= l[len(l)-1]; i++ {
+			literalsSet[i] = true
+		}
+	}
+
+	ctx.tokens = append(ctx.tokens, token{
+		tokenType: bracket,
+		value:     literalsSet,
+	})
+}
+
+func parseRepeat(regex string, ctx *parseContext) {
+
+}
+
+func parseRepeatSpecified(regex string, ctx *parseContext) {
+
+}
+
+func parseOr(regex string, ctx *parseContext) {
+
 }
