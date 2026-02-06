@@ -1,6 +1,8 @@
 package main
 
 import "fmt"
+import "strings"
+import "strconv"
 
 type tokenType uint8
 
@@ -12,6 +14,7 @@ const (
 	literal
 	groupUncaptured
 )
+const repeatInfinity = -1
 
 type token struct {
 	tokenType tokenType
@@ -21,6 +24,11 @@ type token struct {
 type parseContext struct {
 	pos    int
 	tokens []token
+}
+type repeatPayload struct {
+	min   int
+	max   int
+	token token
 }
 
 func parse(regex string) *parseContext {
@@ -63,7 +71,7 @@ func process(regex string, ctx *parseContext) {
 }
 
 func parseGroup(regex string, groupCtx *parseContext) {
-	groupCtx.pos++ // Jumping the opening bracket
+	groupCtx.pos++
 	for regex[groupCtx.pos] != ')' {
 		process(regex, groupCtx)
 		groupCtx.pos++
@@ -71,7 +79,7 @@ func parseGroup(regex string, groupCtx *parseContext) {
 }
 
 func parseBracket(regex string, ctx *parseContext) {
-	ctx.pos++ // Jumping the first bracket
+	ctx.pos++
 	var literals []string
 	ch := regex[ctx.pos]
 	for ch != ']' {
@@ -100,13 +108,98 @@ func parseBracket(regex string, ctx *parseContext) {
 }
 
 func parseRepeat(regex string, ctx *parseContext) {
-
+	ch := regex[ctx.pos]
+	var min, max int
+	if ch == '*' {
+		min = 0
+		max = repeatInfinity
+	} else if ch == '?' {
+		min = 0
+		max = 1
+	} else {
+		min = 1
+		max = repeatInfinity
+	}
+	lastToken := ctx.tokens[len(ctx.tokens)-1]
+	ctx.tokens[len(ctx.tokens)-1] = token{
+		tokenType: repeat,
+		value: repeatPayload{
+			min:   min,
+			max:   max,
+			token: lastToken,
+		},
+	}
 }
 
 func parseRepeatSpecified(regex string, ctx *parseContext) {
+	start := ctx.pos + 1
+	for regex[ctx.pos] != '}' {
+		ctx.pos++
+	}
 
+	boundariesStr := regex[start:ctx.pos]
+	pieces := strings.Split(boundariesStr, ",")
+	var min, max int
+	if len(pieces) == 1 {
+		if value, err := strconv.Atoi(pieces[0]); err != nil {
+			panic(err.Error())
+		} else {
+			min = value
+			max = value
+		}
+	} else if len(pieces) == 2 {
+		if value, err := strconv.Atoi(pieces[0]); err != nil {
+			panic(err.Error())
+		} else {
+			min = value
+		}
+
+		if pieces[1] == "" {
+			max = repeatInfinity
+		} else if value, err := strconv.Atoi(pieces[1]); err != nil {
+			panic(err.Error())
+		} else {
+			max = value
+		}
+	} else {
+		panic(fmt.Sprintf("There must be either 1 or 2 values specified for the quantifier: provided '%s'", boundariesStr))
+	}
+
+	lastToken := ctx.tokens[len(ctx.tokens)-1]
+	ctx.tokens[len(ctx.tokens)-1] = token{
+		tokenType: repeat,
+		value: repeatPayload{
+			min:   min,
+			max:   max,
+			token: lastToken,
+		},
+	}
 }
 
 func parseOr(regex string, ctx *parseContext) {
+	rhsContext := &parseContext{
+		pos:    ctx.pos,
+		tokens: []token{},
+	}
+	rhsContext.pos += 1
+	for rhsContext.pos < len(regex) && regex[rhsContext.pos] != ')' {
+		process(regex, rhsContext)
+		rhsContext.pos += 1
+	}
 
+	left := token{
+		tokenType: groupUncaptured,
+		value:     ctx.tokens,
+	}
+
+	right := token{
+		tokenType: groupUncaptured,
+		value:     rhsContext.tokens,
+	}
+	ctx.pos = rhsContext.pos
+
+	ctx.tokens = []token{{
+		tokenType: or,
+		value:     []token{left, right},
+	}}
 }
