@@ -31,6 +31,12 @@ type repeatPayload struct {
 	token token
 }
 
+type state struct {
+	start       bool
+	terminal    bool
+	transitions map[uint8][]*state
+}
+
 func parse(regex string) *parseContext {
 	ctx := &parseContext{
 		pos:    0,
@@ -202,4 +208,93 @@ func parseOr(regex string, ctx *parseContext) {
 		tokenType: or,
 		value:     []token{left, right},
 	}}
+}
+
+/* building the NFA */
+
+const epcilonChar uint8 = 0
+
+func toNfa(ctx *parseContext) *state {
+	startState, endState := tokenToNfa(&ctx.tokens[0])
+	for i := 1; i < len(ctx.tokens); i++ {
+		startNext, endNext := tokenToNfa(&ctx.tokens[i])
+		endState.transitions[epcilonChar] = append(
+			endState.transitions[epcilonChar],
+			startNext,
+		)
+		endState = endNext
+	}
+
+	start := &state{
+		start: true,
+		transitions: map[uint8][]*state{
+			epcilonChar: {startState},
+		},
+	}
+
+	end := &state{
+		terminal:    true,
+		transitions: map[uint8][]*state{},
+	}
+
+	endState.transitions[epcilonChar] = append(
+		endState.transitions[epcilonChar],
+		end,
+	)
+
+	return start
+}
+
+func tokenToNfa(t *token) (*state, *state) {
+	start := &state{
+		start:       true,
+		transitions: map[uint8][]*state{},
+	}
+	end := &state{
+		terminal:    true,
+		transitions: map[uint8][]*state{},
+	}
+
+	switch t.tokenType {
+	case literal:
+		ch := t.value.(uint8)
+		start.transitions[ch] = []*state{end}
+	case or:
+		values := t.value.([]token)
+		left := values[0]
+		right := values[1]
+
+		s1, e1 := tokenToNfa(&left)
+		s2, e2 := tokenToNfa(&right)
+
+		start.transitions = map[uint8][]*state{
+			epcilonChar: []*state{s1, s2},
+		}
+		e1.transitions[epcilonChar] = []*state{end}
+		e2.transitions[epcilonChar] = []*state{end}
+
+	case bracket:
+		literals := t.value.(map[uint8]bool)
+		for l := range literals {
+			start.transitions[l] = []*state{end}
+		}
+
+	case repeat:
+
+	case group, groupUncaptured:
+		tokens := t.value.([]token)
+		start, end = tokenToNfa(&tokens[0])
+		for i := 1; i < len(tokens); i++ {
+			ts, te := tokenToNfa(&tokens[i])
+			end.transitions[epcilonChar] = append(
+				end.transitions[epcilonChar],
+				ts,
+			)
+			end = te
+		}
+	default:
+		panic("unknown type of token")
+	}
+
+	return start, end
 }
