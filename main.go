@@ -280,6 +280,55 @@ func tokenToNfa(t *token) (*state, *state) {
 		}
 
 	case repeat:
+		p := t.value.(repeatPayload)
+		if p.min == 0 {
+			start.transitions[epcilonChar] = []*state{end}
+		}
+
+		var copyCount int
+		if p.max == repeatInfinity {
+			if p.min == 0 {
+				copyCount = 0
+			} else {
+				copyCount = p.min
+			}
+		} else {
+			copyCount = p.max
+		}
+
+		from, to := tokenToNfa(&p.token)
+		start.transitions[epcilonChar] = append(
+			start.transitions[epcilonChar],
+			from,
+		)
+		for i := 2; i <= copyCount; i++ {
+			s, e := tokenToNfa(&p.token)
+			to.transitions[epcilonChar] = append(
+				to.transitions[epcilonChar],
+				s,
+			)
+
+			from = s
+			to = e
+
+			if i > p.min {
+				s.transitions[epcilonChar] = append(
+					s.transitions[epcilonChar],
+					end,
+				)
+			}
+		}
+		to.transitions[epcilonChar] = append(
+			to.transitions[epcilonChar],
+			end,
+		)
+
+		if p.max == repeatInfinity {
+			end.transitions[epcilonChar] = append(
+				end.transitions[epcilonChar],
+				from,
+			)
+		}
 
 	case group, groupUncaptured:
 		tokens := t.value.([]token)
