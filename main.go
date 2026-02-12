@@ -14,6 +14,10 @@ const (
 	literal
 	groupUncaptured
 )
+const (
+	startOfText uint8 = iota
+	endOfText
+)
 const repeatInfinity = -1
 
 type token struct {
@@ -77,6 +81,7 @@ func process(regex string, ctx *parseContext) {
 }
 
 func parseGroup(regex string, groupCtx *parseContext) {
+	fmt.Println("parseGroup is working ...")
 	groupCtx.pos++
 	for regex[groupCtx.pos] != ')' {
 		process(regex, groupCtx)
@@ -85,6 +90,7 @@ func parseGroup(regex string, groupCtx *parseContext) {
 }
 
 func parseBracket(regex string, ctx *parseContext) {
+	fmt.Println("parseBracket is working ...")
 	ctx.pos++
 	var literals []string
 	ch := regex[ctx.pos]
@@ -114,6 +120,7 @@ func parseBracket(regex string, ctx *parseContext) {
 }
 
 func parseRepeat(regex string, ctx *parseContext) {
+	fmt.Println("parseRepeat is working ...")
 	ch := regex[ctx.pos]
 	var min, max int
 	if ch == '*' {
@@ -138,6 +145,7 @@ func parseRepeat(regex string, ctx *parseContext) {
 }
 
 func parseRepeatSpecified(regex string, ctx *parseContext) {
+	fmt.Println("parseRepeatSpecified is working ...")
 	start := ctx.pos + 1
 	for regex[ctx.pos] != '}' {
 		ctx.pos++
@@ -183,6 +191,7 @@ func parseRepeatSpecified(regex string, ctx *parseContext) {
 }
 
 func parseOr(regex string, ctx *parseContext) {
+	fmt.Println("parseOr is working ...")
 	rhsContext := &parseContext{
 		pos:    ctx.pos,
 		tokens: []token{},
@@ -347,3 +356,55 @@ func tokenToNfa(t *token) (*state, *state) {
 
 	return start, end
 }
+
+// the matching logic
+
+func getChar(str string, pos int) uint8 {
+	if pos >= len(str) {
+		return endOfText
+	}
+	if pos < 0 {
+		return startOfText
+	}
+	return str[pos]
+}
+
+func (s *state) check(str string, pos int) bool {
+	ch := getChar(str, pos)
+
+	if ch == endOfText && s.terminal {
+		return true
+	}
+	if states := s.transitions[ch]; len(states) > 0 {
+		nextState := states[0]
+		if nextState.check(str, pos+1) {
+			return true
+		}
+
+		for _, state := range s.transitions[epcilonChar] {
+			if state.check(str, pos) {
+				return true
+			}
+		}
+
+		if ch == startOfText && s.check(str, pos) {
+			return true
+		}
+	}
+	return false
+}
+
+/*
+func main() {
+	fmt.Println("hello world")
+	ctx := parse("[a-zA-Z][a-zA-Z0-9_.]+@[a-zA-Z0-9]+.[a-zA-Z]{2,}")
+	fmt.Println("finished parsing")
+	nfa := toNfa(ctx)
+	fmt.Println("converted to nfa successfully")
+	if nfa.check("ayoub@gmail.com", -1) {
+		fmt.Println("email is valid")
+	} else {
+		fmt.Println("email not valid")
+	}
+}
+*/
